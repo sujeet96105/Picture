@@ -369,6 +369,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   footerLoader: {
+    width: '100%',
     paddingTop: 14,
     paddingBottom: 24,
     alignItems: 'center',

@@ -495,6 +495,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   footerLoader: {
+    width: '100%',
     paddingTop: 14,
     paddingBottom: 24,
     alignItems: 'center',
