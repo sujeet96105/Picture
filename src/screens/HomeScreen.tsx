@@ -4,6 +4,7 @@ import {
   Text,
   Image,
   StyleSheet,
+  ActivityIndicator,
   RefreshControl,
   Dimensions,
   Pressable,
@@ -19,6 +20,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { getRecentImages } from '../services/api';
+import RetrySnackbar from '../ui/RetrySnackbar';
 
 export type FlickrPhoto = {
   id: string;
@@ -28,6 +30,8 @@ export type FlickrPhoto = {
 
 type RecentImagesResponse = {
   photos?: FlickrPhoto[];
+  page?: number;
+  pages?: number;
   timestamp?: number;
   fromCache?: boolean;
 };
@@ -92,26 +96,77 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [favorites, setFavorites] = useState<Record<string, true>>({});
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+  const lastRequestRef = React.useRef<null | (() => void)>(null);
 
   const FAVORITES_KEY = '@FavoritePhotoIds';
 
-  const loadImages = async (isRefreshing = false) => {
-    if (!isRefreshing) setLoading(true);
-    setError(null);
+  const showRetrySnackbar = useCallback((message: string, retry: () => void) => {
+    lastRequestRef.current = retry;
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  }, []);
 
-    try {
-      const data = (await getRecentImages()) as RecentImagesResponse;
-      setImages(data.photos || []);
-      setLastUpdated(typeof data.timestamp === 'number' ? data.timestamp : null);
-      setFromCache(Boolean(data.fromCache));
-    } catch (err) {
-      console.error('Failed to load images:', err);
-      setError('Failed to load images. Please check your connection.');
-    } finally {
-      setLoading(false);
-      if (isRefreshing) setRefreshing(false);
-    }
-  };
+  const fetchPage = useCallback(
+    async (nextPage: number, mode: 'replace' | 'append', isRefreshing = false) => {
+      if (!isRefreshing && mode === 'replace') setLoading(true);
+      if (mode === 'append') setLoadingMore(true);
+      setError(null);
+
+      try {
+        const data = (await getRecentImages(nextPage)) as RecentImagesResponse;
+        const incoming = (data.photos || []).filter((x) => x?.url_s);
+        const remotePages = typeof data.pages === 'number' ? data.pages : undefined;
+
+        setImages((prev) => {
+          if (mode === 'replace') return incoming;
+          const seen = new Set(prev.map((p) => String(p.id)));
+          const merged = [...prev];
+          incoming.forEach((p) => {
+            const id = String(p.id);
+            if (!seen.has(id)) {
+              seen.add(id);
+              merged.push(p);
+            }
+          });
+          return merged;
+        });
+
+        setLastUpdated(typeof data.timestamp === 'number' ? data.timestamp : null);
+        setFromCache(Boolean(data.fromCache));
+        setPage(nextPage);
+        const hardLimit = 3;
+        const maxAllowedPage = remotePages ? Math.min(hardLimit, remotePages) : hardLimit;
+        setHasMore(nextPage < maxAllowedPage);
+      } catch (err) {
+        console.error('Failed to load images:', err);
+        const msg = 'Network error. Please check your connection.';
+        if (mode === 'replace') {
+          setError('Failed to load images. Please check your connection.');
+        }
+        showRetrySnackbar(msg, () => {
+          fetchPage(nextPage, mode, false);
+        });
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+        if (isRefreshing) setRefreshing(false);
+      }
+    },
+    [showRetrySnackbar],
+  );
+
+  const loadImages = useCallback(
+    async (isRefreshing = false) => {
+      setHasMore(true);
+      await fetchPage(1, 'replace', isRefreshing);
+    },
+    [fetchPage],
+  );
 
   useEffect(() => {
     loadImages();
@@ -181,6 +236,23 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const onPressReload = useCallback(() => {
     loadImages();
   }, []);
+
+  const onEndReached = useCallback(() => {
+    if (loading || refreshing || loadingMore) return;
+    if (!hasMore) return;
+    const nextPage = page + 1;
+    fetchPage(nextPage, 'append', false);
+  }, [fetchPage, hasMore, loading, loadingMore, page, refreshing]);
+
+  const footer = useMemo(() => {
+    if (!loadingMore) return <View style={{ height: 10 }} />;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator color="#EAF0FF" />
+        <Text style={styles.footerLoaderText}>Loading more…</Text>
+      </View>
+    );
+  }, [loadingMore]);
 
   if (loading && !refreshing) {
     return (
@@ -256,10 +328,23 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         numColumns={NUM_COLUMNS}
         contentContainerStyle={styles.listContent}
         columnWrapperStyle={styles.columnWrapper}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.6}
+        ListFooterComponent={footer}
         refreshControl={
           <RefreshControl tintColor="#EAF0FF" refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
+      />
+
+      <RetrySnackbar
+        visible={snackbarVisible}
+        message={snackbarMessage}
+        onDismiss={() => setSnackbarVisible(false)}
+        onRetry={() => {
+          setSnackbarVisible(false);
+          lastRequestRef.current?.();
+        }}
       />
     </View>
   );
@@ -408,6 +493,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '900',
     letterSpacing: 0.2,
+  },
+  footerLoader: {
+    paddingTop: 14,
+    paddingBottom: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  footerLoaderText: {
+    color: 'rgba(234,240,255,0.72)',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
 

@@ -4,7 +4,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import HomeScreen from '../screens/HomeScreen.tsx';
 import ImageDetailScreen from '../screens/ImageDetailScreen.tsx';
-import { View, Text, StyleSheet } from 'react-native';
+import SearchScreen from '../screens/SearchScreen.tsx';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 
 // Import the new masked-view package
 import 'react-native-gesture-handler';
@@ -53,7 +54,31 @@ const AppNavigator = () => {
             },
           }}
         >
-          <Drawer.Screen name="Home" component={HomeScreen} />
+          <Drawer.Screen
+            name="Home"
+            component={HomeScreen}
+            options={({ navigation }) => ({
+              headerRight: () => (
+                <Pressable
+                  onPress={() => navigation.navigate('Search')}
+                  hitSlop={10}
+                  style={styles.headerAction}
+                >
+                  <Text style={styles.headerActionText}>Search</Text>
+                </Pressable>
+              ),
+            })}
+          />
+          <Drawer.Screen
+            name="Search"
+            component={SearchScreen}
+            options={{
+              headerShown: false,
+              drawerLabel: () => null,
+              title: undefined,
+              drawerItemStyle: { height: 0 },
+            }}
+          />
           <Drawer.Screen
             name="ImageDetail"
             component={ImageDetailScreen}
@@ -96,6 +121,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'rgba(234,240,255,0.82)',
     fontWeight: '700',
+  },
+  headerAction: {
+    marginRight: 10,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(234,240,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  headerActionText: {
+    color: '#EAF0FF',
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.2,
   },
 });
 

@@ -34,6 +34,10 @@ export const getRecentImages = async (page = 1, perPage = 20) => {
     if (response.data && response.data.photos) {
       const dataToCache = {
         photos: response.data.photos.photo,
+        page: response.data.photos.page,
+        pages: response.data.photos.pages,
+        perpage: response.data.photos.perpage,
+        total: response.data.photos.total,
         timestamp: now,
         fromCache: false,
       };
@@ -61,4 +65,38 @@ export const getRecentImages = async (page = 1, perPage = 20) => {
     
     throw error;
   }
+};
+
+export const searchPhotos = async (text, page = 1, perPage = 20) => {
+  const query = typeof text === 'string' ? text.trim() : '';
+  if (!query) {
+    return { photos: [], timestamp: Date.now(), fromCache: false };
+  }
+
+  const response = await axios.get(FLICKR_API_URL, {
+    params: {
+      method: 'flickr.photos.search',
+      api_key: FLICKR_API_KEY,
+      format: 'json',
+      nojsoncallback: 1,
+      extras: 'url_s',
+      text: query,
+      per_page: perPage,
+      page: page,
+    },
+  });
+
+  if (response?.data?.photos?.photo) {
+    return {
+      photos: response.data.photos.photo,
+      page: response.data.photos.page,
+      pages: response.data.photos.pages,
+      perpage: response.data.photos.perpage,
+      total: response.data.photos.total,
+      timestamp: Date.now(),
+      fromCache: false,
+    };
+  }
+
+  throw new Error('Failed to search photos');
 };
